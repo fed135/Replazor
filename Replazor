@@ -1,0 +1,111 @@
+#!/bin/bash
+
+###-------------------------------------// Variables
+
+filter="*"
+directory="$PWD"
+needle=""
+replacement=""
+filechanged=0
+
+line=""
+
+###-------------------------------------// Colors
+
+YELLOW_COLOR="\033[0;33m"   #Filter
+RED_COLOR="\033[1;31m"      #Errors/Keep
+GREEN_COLOR="\033[1;32m"    #Resolved
+GRAY_COLOR="\033[0;37m"     #Pending
+HIGHLIGHT="\e[47m"
+BLACK_COLOR="\033[0;30m"
+CYAN_COLOR="\033[1;36m"     #String found
+
+RESET="\e[0m"
+
+###-------------------------------------// States
+
+PENDING=$RESET"[-]"$GRAY_COLOR
+RESOLVED=$GREEN_COLOR"[Y]"$GRAY_COLOR
+KEEP=$RED_COLOR"[X]"$GRAY_COLOR
+
+###-------------------------------------// Initialization
+
+#Not clean, but I'm lazy
+if [ $# -lt 2 ] ; then
+  echo -e $RED_COLOR"Give me something to look for, and something to replace it with!"$RESET
+  exit 0
+fi
+
+needle="$1"
+replacement="$2"
+if [ $# -ge 3 ] ; then
+  directory="$3"
+fi
+if [ $# -ge 4 ] ; then
+  filter="$4"
+fi
+
+###-------------------------------------// Methods
+
+#Uses the global settings to check files for the desired key
+main () {
+  local file
+  local lines
+  local newfile=""
+
+  echo -e "Starting search in $YELLOW_COLOR$directory$RESET for $filter..."
+
+  for f in $(find "$directory" -name $filter) ; do
+    newfile=""
+    filechanged=0
+    mapfile < $f
+    file="${MAPFILE[@]}"
+    echo " "
+    echo -e "  Scanning:"$YELLOW_COLOR"$f"$RESET"..."
+    
+    IFS=$'\n' read -a lines <<< "${file}"
+    for (( u=0 ; u < ${#lines[@]} ; u++ )) do
+      #echo "    line $u : ${lines[$u]}"
+      line=${lines[$u]//"$needle"/"$PENDING$needle"}
+      while [[ $line == *"$PENDING$needle"* ]] ; do
+        replace_in_line "$f" "$u"
+      done
+    done
+
+    newfile+=$line$'\n'
+
+    if [[ $newfile == *"$RESOLVED"* ]] ; then
+      newfile=${newfile//"$KEEP$needle"/"$needle"}
+      newfile=${newfile//"$RESOLVED$replacement"/"$replacement"}
+
+      echo " "
+      echo " "
+      echo -e "    "$GREEN_COLOR$filechanged$RESET" Change(s)"
+      echo -e $GREEN_COLOR"    Saving"$RESET
+      echo "$newfile" > "$f"
+    fi
+  done
+}
+
+#For every instance of the needle in the file line, ask to change
+replace_in_line () {
+  local sub=${line/"$PENDING$needle"/"$CYAN_COLOR$needle$GRAY_COLOR"}
+  sub=${sub/"$PENDING$needle"/"$needle"}
+
+  echo -e "    "$CYAN_COLOR"Found"$RESET" string at line "$2
+  echo -e "      "$GRAY_COLOR$sub$RESET
+  echo " "
+  #echo $line
+  read -p "    -> Replace with \"$replacement\" (y/n) " -n 1 -r
+  echo " "
+  if [[ $REPLY =~ ^[Yy]$ ]] ; then
+    ((filechanged++))
+    line=${line/"$PENDING$needle"/"$RESOLVED$replacement"}
+  else
+    line=${line/"$PENDING$needle"/"$KEEP$needle"}
+  fi
+}
+
+###-------------------------------------// Program Start
+
+main

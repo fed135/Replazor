@@ -1,6 +1,23 @@
 #!/bin/bash
 
-###-------------------------------------// Variables
+###---------------------------------------------------------------------// Notes
+#
+# This tool was made to perform a quick search and replace in large 
+# numbers of text files.
+# USE AT YOUR OWN PERIL, ALWAYS PERFORM A BACKUP FIRST!
+#
+# @author frederic charette<fredericcharette@gmail.com>
+# @repo github.com/fed135/Replazor
+# @licence GNU GPL 2.0
+#
+# Roadmap:
+#  - Increase portability
+#  - Cleanup
+#  - Include manual
+#  - Fix line numbers (get offsetted on reading empty lines)
+#  - Increase performances
+#
+###-----------------------------------------------------------------// Variables
 
 filter="*"
 directory="$PWD"
@@ -10,29 +27,27 @@ filechanged=0
 
 line=""
 
-###-------------------------------------// Colors
+###--------------------------------------------------------------------// Colors
 
 YELLOW_COLOR="\033[0;33m"   #Filter
 RED_COLOR="\033[1;31m"      #Errors/Keep
 GREEN_COLOR="\033[1;32m"    #Resolved
 GRAY_COLOR="\033[0;37m"     #Pending
-HIGHLIGHT="\e[47m"
-BLACK_COLOR="\033[0;30m"
 CYAN_COLOR="\033[1;36m"     #String found
 
 RESET="\e[0m"
 
-###-------------------------------------// States
+###--------------------------------------------------------------------// States
 
 PENDING=$RESET"[-]"$GRAY_COLOR
 RESOLVED=$GREEN_COLOR"[Y]"$GRAY_COLOR
 KEEP=$RED_COLOR"[X]"$GRAY_COLOR
 
-###-------------------------------------// Initialization
+###------------------------------------------------------------// Initialization
 
 #Not clean, but I'm lazy
 if [ $# -lt 2 ] ; then
-  echo -e $RED_COLOR"Give me something to look for, and something to replace it with!"$RESET
+  echo -e $RED_COLOR"Invalid parameters"$RESET
   exit 0
 fi
 
@@ -45,31 +60,39 @@ if [ $# -ge 4 ] ; then
   filter="$4"
 fi
 
-###-------------------------------------// Methods
+###-------------------------------------------------------------------// Methods
 
 #Uses the global settings to check files for the desired key
 main () {
   local file
   local lines
   local newfile=""
+  local lineno=0
+  local prevline=""
+  local nextline=""
 
   echo -e "Starting search in $YELLOW_COLOR$directory$RESET for $filter..."
 
   for f in $(find "$directory" -name $filter) ; do
     newfile=""
     filechanged=0
-    mapfile < $f
-    file="${MAPFILE[@]}"
+    lineno=0
     echo " "
     echo -e "  Scanning:"$YELLOW_COLOR"$f"$RESET"..."
     
-    IFS=$'\n' read -a lines <<< "${file}"
-    for (( u=0 ; u < ${#lines[@]} ; u++ )) do
-      #echo "    line $u : ${lines[$u]}"
-      line=${lines[$u]//"$needle"/"$PENDING$needle"}
+    IFS=$'\n' 
+    for newline in $(cat $f) ; do
+      ((lineno++))
+      #echo "    line $lineno : $newline"
+      #echo "replacing $needle with $PENDING$needle in $newline"
+      mapfile -s $(($lineno+1)) nextline < $f
+      line=${newline//$needle/${PENDING}${needle}}
       while [[ $line == *"$PENDING$needle"* ]] ; do
-        replace_in_line "$f" "$u"
+        replace_in_line "$f" "$lineno" "$prevline" "$nextline"
       done
+      if [[ $lineno != 1 ]] ; then
+        prevline="$newline"
+      fi
     done
 
     newfile+=$line$'\n'
@@ -91,9 +114,14 @@ main () {
 replace_in_line () {
   local sub=${line/"$PENDING$needle"/"$CYAN_COLOR$needle$GRAY_COLOR"}
   sub=${sub/"$PENDING$needle"/"$needle"}
+  prevlineno=$(($2-1))
 
   echo -e "    "$CYAN_COLOR"Found"$RESET" string at line "$2
-  echo -e "      "$GRAY_COLOR$sub$RESET
+  if [[ $3 != "" ]] ; then
+    echo -e "      (line $(($2-1))):"$GRAY_COLOR$3$RESET
+  fi
+  echo -e "      (line $2):"$GRAY_COLOR$sub$RESET
+  echo -e "      (line $(($2+1))):"$GRAY_COLOR$4$RESET
   echo " "
   #echo $line
   read -p "    -> Replace with \"$replacement\" (y/n) " -n 1 -r
@@ -106,6 +134,6 @@ replace_in_line () {
   fi
 }
 
-###-------------------------------------// Program Start
+###-------------------------------------------------------------// Program Start
 
 main
